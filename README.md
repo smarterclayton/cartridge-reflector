@@ -7,8 +7,8 @@ to get the cart data).
 
 An example workflow might be:
 
-1)  Create and upload a source GitHub repository corresponding to your cartridge
-2)  Put your manifest.yml in metadata/
+1.  Create and upload a source GitHub repository corresponding to your cartridge
+2.  Put your manifest.yml in metadata/
 
 At this point, you wouldn't be able to download and test this cart on OpenShift 
 without checking in a Source-Url.  If you changed the cart, you'd have to checkin
@@ -16,7 +16,7 @@ both a new manifest AND a new zip file (or host the zip file somewhere else).
 This would suck.  Fortunately.... the Cartridge Reflector can read your manifest
 and automatically provide a Source-Url if you upload to GitHub!
 
-3)  Craft a URL against my cart reflector http://cartreflect-claytondev.rhcloud.com/
+3.  Craft a URL against my cart reflector http://cartreflect-claytondev.rhcloud.com/
 (or stand up your own following the steps below)
  
         http://cartreflector-claytondev.rhcloud.com/reflect?github=<X>
@@ -25,12 +25,11 @@ and automatically provide a Source-Url if you upload to GitHub!
     If you hit the URL you'll see that the reflector generates a Source-Url that points
     back to GitHub.
     
-4)  Pass that URL to rhc create-app to create a downloadable cart:
+4.  Pass that URL to rhc create-app to create a downloadable cart:
 
         rhc create-app foo http://cartreflector-claytondev.rhcloud.com/reflect?github=smarterclayton/openshift-go-cart
 
-See the [root page of the reflector](http://cartreflector-claytondev.rhcloud.com/) for more documentation.  
-It also supports relative URLs and GitHub commits (pass '&commit=<sha1>' when using the github param).
+See the [root page of the reflector](http://cartreflector-claytondev.rhcloud.com/) for more documentation. It also supports relative URLs and GitHub commits (pass '&commit=<sha1>' when using the github param).
 
 Setting up your own reflector
 -----------------------------

@@ -74,7 +74,12 @@ class CartReflector < Sinatra::Base
       return [400, "Manifest unreachable, #{e.res.code}"]
     end
 
-    manifest = YAML.load(s, nil, :safe => true, :raise_on_unknown_tag => true) rescue (return [400, "Manifest could not be safely parsed"])
+    manifest = begin
+      YAML.load(s, nil, :safe => true, :raise_on_unknown_tag => true) 
+    rescue Exception => e
+      puts "Error: #{url}: #{e.message}\n  #{e.backtrace.join("  \n")}"
+      return [400, "Manifest could not be safely parsed"]
+    end
     source = URI.parse(manifest['Source-Url'] || '') rescue nil
     if (source && source.host) and not params[:r]
       puts "Manifest #{url} already has a source-url"

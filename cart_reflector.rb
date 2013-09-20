@@ -4,6 +4,118 @@ require 'uri'
 require 'safe_yaml'
 require 'delegate'
 
+class ManifestError < StandardError
+  attr_reader :status
+  def initialize(message, status=400)
+    super(message)
+    @status = status
+  end
+end
+
+class Manifest
+  def self.fetch(url)
+    c = HTTPClient.new
+
+    c.read_block_size = 30*1024
+    c.connect_timeout = 5
+    c.send_timeout = 5
+    c.receive_timeout = 5
+
+    s = ""
+    begin
+      c.get_content(url) do |chunk|
+        s << chunk
+        raise ManifestError, "Manifest too long" if s.length > c.read_block_size
+      end
+    rescue HTTPClient::BadResponseError => e
+      raise ManifestError, "Manifest #{url} unreachable: #{e.res.code}"
+    end
+
+    new(Manifest.parse(s), url)
+  end
+
+  def self.parse(s)
+    YAML.load(s, nil, :safe => true, :raise_on_unknown_tag => true)
+  rescue Exception => e
+    puts "Error: #{url}: #{e.message}\n  #{e.backtrace.join("  \n")}"
+    raise ManifestError, "Manifest could not be safely parsed"
+  end
+
+  attr_reader :state
+
+  def initialize(manifest, base_url)
+    @manifest = manifest
+    @base_url = base_url
+  end
+  def transform(rewrite=false)
+    return if @state
+    @state = :unchanged
+
+    if source = source_url
+      return if not rewrite
+      if UrlConditions.new(source).relative_path?
+        self.source_url = URI.join(base_url, source)
+        @state = :relative_path
+        return
+      end
+    end
+
+    if m = conditions.raw_github_project_manifest?
+      self.source_url = "https://github.com/#{m[1]}/#{m[2]}/archive/#{m[3]}.zip"
+      @state = :github_archive
+      return
+    end
+
+    if not conditions.manifest_path?
+      self.source_url = relative_file_url
+      @state = :rewrite_path
+      return
+    end
+  end
+
+  def to_response_text
+    @manifest.to_yaml.gsub(/\A---\n/,'')
+  end
+
+  protected
+    def source_url
+      @source_url ||= URI.parse(manifest['Source-Url'] || '') rescue nil
+    end
+    def source_url=(s)
+      s = s.to_s if s && !s.is_a?(String)
+      @manifest['Source-Url'] = s
+    end
+    def conditions
+      @conditions ||= UrlConditions.new(@base_url)
+    end
+    def relative_file_url
+      dir = File.dirname(@base_url.path)
+      name = File.basename(dir, File.extname(dir))
+      url = @base_url.dup
+      url.path = "#{dir}/#{name}.tar.gz"
+      url
+    end
+end
+
+class UrlConditions < SimpleDelegator
+  def github?
+    host == 'github.com'
+  end
+  def raw_github?
+    host == 'raw.github.com'
+  end
+  def raw_github_project_manifest?
+    (github? && %r|/([^/]+)/([^/]+)/raw/([^/]+)/metadata/manifest\.ya?ml\Z|.match(path)) ||
+    (raw_github? && %r|/([^/]+)/([^/]+)/([^/]+)/metadata/manifest\.ya?ml\Z|.match(path))
+  end
+  def manifest_path?
+    path.end_with?('/metadata/manifest.yml') || path.end_with?('/metadata/manifest.yaml')
+  end
+  def relative_path?
+    not path.empty? and not path.start_with?('/')
+  end
+end
+
 class CartReflector < Sinatra::Base
   get '/' do
     headers 'Content-Type' => 'text/plain'
@@ -14,11 +126,9 @@ class CartReflector < Sinatra::Base
 
      #{request.scheme}://#{request.host_with_port}/reflect?u=https://url.to.my.server/path/of/my/manifest.yml
 
-  You may also pass the 'github' parameter as '<user>/<project>' and the reflector will
-  assume the 'metadata/manifest.yml' relative path is your cartridge manifest. If you
-  specify 'commit', the reflector will use that commit directly.
+  If you would like to pull from a GitHub repository, use the /github/:user/:repository path:
 
-     #{request.scheme}://#{request.host_with_port}/reflect?github=smarterclayton/openshift-go-cart&commit=master
+     #{request.scheme}://#{request.host_with_port}/github/smarterclayton/openshift-go-cart?commit=master&r=1
 
   The reflector will attempt the following rewrites of the Source-Url in order:
 
@@ -49,7 +159,7 @@ class CartReflector < Sinatra::Base
     headers 'Content-Type' => 'text/plain'
 
     if params[:github]
-      url = URI.parse("https://raw.github.com/#{params[:github]}/#{params[:commit] || 'master'}/metadata/manifest.yml")
+      url = URI.parse("https://raw.github.com/#{URI.escape(params[:github])}/#{URI.escape(params[:commit] || 'master')}/metadata/manifest.yml")
     else
       return [400, "Pass URL to reflect as parameter 'u'"] unless (url = params[:u]) && !url.empty?
       return [400, "Pass a valid URL"] unless url = URI.parse(url)
@@ -125,22 +235,17 @@ class CartReflector < Sinatra::Base
     s
   end
 
-  class UrlConditions < SimpleDelegator
-    def github?
-      host == 'github.com'
-    end
-    def raw_github?
-      host == 'raw.github.com'
-    end
-    def raw_github_project_manifest?
-      (github? && %r|/([^/]+)/([^/]+)/raw/([^/]+)/metadata/manifest\.ya?ml\Z|.match(path)) ||
-      (raw_github? && %r|/([^/]+)/([^/]+)/([^/]+)/metadata/manifest\.ya?ml\Z|.match(path))
-    end
-    def manifest_path?
-      path.end_with?('/metadata/manifest.yml') || path.end_with?('/metadata/manifest.yaml')
-    end
-    def relative_path?
-      not path.empty? and not path.start_with?('/')
-    end
+  get '/github/:user/:repository' do
+    url = URI.parse("https://raw.github.com/#{URI.escape(params[:user])}/#{URI.escape(params[:repository])}/#{URI.escape(params[:commit] || 'master')}/metadata/manifest.yml")
+    m = Manifest.fetch(url)
+    m.transform(params[:r] == '1')
+
+    headers 'X-OpenShift-Cartridge-Reflect' => m.state.to_s
+    m.to_response_text
+  end
+
+  error ManifestError do
+    e = env['sinatra.error']
+    [e.status, e.message]
   end
 end

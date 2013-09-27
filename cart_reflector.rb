@@ -240,11 +240,13 @@ class CartReflector < Sinatra::Base
     m = Manifest.fetch(url)
     m.transform(params[:r] == '1')
 
+    headers 'Content-Type' => 'text/plain'
     headers 'X-OpenShift-Cartridge-Reflect' => m.state.to_s
     m.to_response_text
   end
 
   error ManifestError do
+    headers 'Content-Type' => 'text/plain'
     e = env['sinatra.error']
     [e.status, e.message]
   end

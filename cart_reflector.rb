@@ -4,6 +4,18 @@ require 'uri'
 require 'safe_yaml'
 require 'delegate'
 
+def version_override(manifest, version)
+  raise Exception, "Invalid cartridge version: #{version}" unless version == manifest['Version'] or (manifest['Versions'] and manifest['Versions'].member?(version))
+  begin
+    manifest.merge!(manifest['Version-Overrides'][version])
+    manifest['Version-Overrides'].delete(version)
+    manifest.delete('Version-Overrides') if manifest['Version-Overrides'].length == 0
+  rescue NoMethodError
+  end
+  manifest['Version'] = version
+  manifest.delete('Versions')
+end
+
 class ManifestError < StandardError
   attr_reader :status
   def initialize(message, status=400)
@@ -13,7 +25,7 @@ class ManifestError < StandardError
 end
 
 class Manifest
-  def self.fetch(url)
+  def self.fetch(url, params)
     c = HTTPClient.new
 
     c.read_block_size = 30*1024
@@ -31,7 +43,7 @@ class Manifest
       raise ManifestError, "Manifest #{url} unreachable: #{e.res.code}"
     end
 
-    new(Manifest.parse(s), url)
+    new(Manifest.parse(s), url, params)
   end
 
   def self.parse(s)
@@ -43,13 +55,21 @@ class Manifest
 
   attr_reader :state
 
-  def initialize(manifest, base_url)
+  def initialize(manifest, base_url, params)
     @manifest = manifest
     @base_url = base_url
+    @params = params
   end
   def transform(rewrite=false)
     return if @state
     @state = :unchanged
+
+    begin
+      version_override(@manifest, @params[:v]) if @params[:v] != nil
+    rescue Exception => e
+      puts "Error: #{e.message}"
+      raise ManifestError, e.message
+    end
 
     if source = source_url
       return if not rewrite
@@ -190,6 +210,14 @@ class CartReflector < Sinatra::Base
       puts "Error: #{url}: #{e.message}\n  #{e.backtrace.join("  \n")}"
       return [400, "Manifest could not be safely parsed"]
     end
+
+    begin
+      version_override(manifest, params[:v]) if params[:v] != nil
+    rescue Exception => e
+      puts "Error: #{e.message}"
+      return [400, e.message]
+    end
+
     source = URI.parse(manifest['Source-Url'] || '') rescue nil
     if (source && source.host) and not params[:r]
       puts "Manifest #{url} already has a source-url"
@@ -237,7 +265,7 @@ class CartReflector < Sinatra::Base
 
   get '/github/:user/:repository' do
     url = URI.parse("https://raw.github.com/#{URI.escape(params[:user])}/#{URI.escape(params[:repository])}/#{URI.escape(params[:commit] || 'master')}/metadata/manifest.yml")
-    m = Manifest.fetch(url)
+    m = Manifest.fetch(url, params)
     m.transform(params[:r] == '1')
 
     headers 'Content-Type' => 'text/plain'

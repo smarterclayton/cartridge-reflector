@@ -158,6 +158,12 @@ class CartReflector < Sinatra::Base
   * If the manifest URL does not end with '/metadata/manifest.yml' or '/metadata/manifest.yaml', 
     rewrite the manifest URL to point to the same name with .tar.gz at the end
 
+  To select a specific version of the cartridge, pass the 'v' parameter. Reflector will rewrite
+  the cartridge by moving Version-Overrides section (if any) to cartridge root. The selected version
+  will be the only one defined in the cartridge, any other version information is removed.
+
+     #{request.scheme}://#{request.host_with_port}/github/caruccio/openshift-nginx-python?v=3.3
+
   Examples:
 
   Manifest URL           Source-Url                Outcome

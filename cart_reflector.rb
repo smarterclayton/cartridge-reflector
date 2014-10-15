@@ -32,6 +32,7 @@ class Manifest
     c.connect_timeout = 5
     c.send_timeout = 5
     c.receive_timeout = 5
+    c.ssl_config.ssl_version = 'TLSv1'
 
     s = ""
     begin
@@ -193,6 +194,7 @@ class CartReflector < Sinatra::Base
     c.connect_timeout = 5
     c.send_timeout = 5
     c.receive_timeout = 5
+    c.ssl_config.ssl_version = 'TLSv1'
 
     s = ""
     begin

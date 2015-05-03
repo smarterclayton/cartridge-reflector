@@ -21,7 +21,7 @@ and automatically provide a Source-Url if you upload to GitHub!
  
         http://cartreflect-claytondev.rhcloud.com/reflect?github=<X>
         
-    where <X> is the name of your user and repository, e.g. "smarterclayton/openshift-go-cart".
+    where `<X>` is the name of your user and repository, e.g. "smarterclayton/openshift-go-cart".
     If you hit the URL you'll see that the reflector generates a Source-Url that points
     back to GitHub.
     

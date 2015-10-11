@@ -7,14 +7,14 @@ to get the cart data).
 
 An example workflow might be:
 
-1.  Create and upload a source GitHub repository corresponding to your cartridge
+1.  Create and upload a source GitHub or Bitbucket repository corresponding to your cartridge
 2.  Put your manifest.yml in metadata/
 
 At this point, you wouldn't be able to download and test this cart on OpenShift 
 without checking in a Source-Url.  If you changed the cart, you'd have to checkin
 both a new manifest AND a new zip file (or host the zip file somewhere else). 
 This would suck.  Fortunately.... the Cartridge Reflector can read your manifest
-and automatically provide a Source-Url if you upload to GitHub!
+and automatically provide a Source-Url if you upload to GitHub or Bitbucket!
 
 3.  Craft a URL against my cart reflector http://cartreflect-claytondev.rhcloud.com/
 (or stand up your own following the steps below)

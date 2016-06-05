@@ -86,6 +86,12 @@ class Manifest
       return
     end
 
+    if m = conditions.bitbucket?
+      self.source_url = "https://bitbucket.org/#{m[1]}/#{m[2]}/get/#{m[3]}.zip"
+      @state = :bitbucket_archive
+      return
+    end
+
     if not conditions.manifest_path?
       self.source_url = relative_file_url
       @state = :rewrite_path
@@ -127,6 +133,9 @@ class UrlConditions < SimpleDelegator
   def raw_github_project_manifest?
     (github? && %r|/([^/]+)/([^/]+)/raw/([^/]+)/metadata/manifest\.ya?ml\Z|.match(path)) ||
     (raw_github? && %r|/([^/]+)/([^/]+)/([^/]+)/metadata/manifest\.ya?ml\Z|.match(path))
+  end
+  def bitbucket?
+    (host == 'bitbucket.org' && %r|/([^/]+)/([^/]+)/raw/([^/]+)/metadata/manifest\.ya?ml\Z|.match(path))
   end
   def manifest_path?
     path.end_with?('/metadata/manifest.yml') || path.end_with?('/metadata/manifest.yaml')
@@ -186,6 +195,8 @@ class CartReflector < Sinatra::Base
 
     if params[:github]
       url = URI.parse("https://raw.github.com/#{URI.escape(params[:github])}/#{URI.escape(params[:commit] || 'master')}/metadata/manifest.yml")
+    elsif params[:bitbucket]
+      url = URI.parse("https://bitbucket.org/#{URI.escape(params[:bitbucket])}/raw/#{URI.escape(params[:commit] || 'master')}/metadata/manifest.yml")
     else
       return [400, "Pass URL to reflect as parameter 'u'"] unless (url = params[:u]) && !url.empty?
       return [400, "Pass a valid URL"] unless url = URI.parse(url)
@@ -253,6 +264,14 @@ class CartReflector < Sinatra::Base
       return manifest.to_yaml.gsub(/\A---\n/,'')
     end
 
+    if m = url.bitbucket?
+      puts "Matched bitbucket hosted manifest, user=#{m[1]} project=#{m[2]} commit=#{m[3]}"
+
+      manifest['Source-Url'] = "https://bitbucket.org/#{m[1]}/#{m[2]}/get/#{m[3]}.zip"
+      headers 'X-OpenShift-Cartridge-Reflect' => 'bitbucket_archive'
+      return manifest.to_yaml.gsub(/\A---\n/,'')
+    end
+
     if not url.manifest_path?
       dir = File.dirname(url.path)
       name = File.basename(file, File.extname(file))
@@ -271,6 +290,16 @@ class CartReflector < Sinatra::Base
 
   get '/github/:user/:repository' do
     url = URI.parse("https://raw.github.com/#{URI.escape(params[:user])}/#{URI.escape(params[:repository])}/#{URI.escape(params[:commit] || 'master')}/metadata/manifest.yml")
+    m = Manifest.fetch(url, params)
+    m.transform(params[:r] == '1')
+
+    headers 'Content-Type' => 'text/plain'
+    headers 'X-OpenShift-Cartridge-Reflect' => m.state.to_s
+    m.to_response_text
+  end
+  
+  get '/bitbucket/:user/:repository' do
+    url = URI.parse("https://bitbucket.org/#{URI.escape(params[:user])}/#{URI.escape(params[:repository])}/raw/#{URI.escape(params[:commit] || 'master')}/metadata/manifest.yml")
     m = Manifest.fetch(url, params)
     m.transform(params[:r] == '1')
 
